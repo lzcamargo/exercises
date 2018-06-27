@@ -89,6 +89,7 @@ m = MonitorObject.new
 m.loadmetamodels
 m.bloom_instance
 m.tick
+
 #Transformation instance into Object Person
 m.person.each do |p| 
 	pn  = Person.new
