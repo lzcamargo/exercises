@@ -45,7 +45,7 @@ module ObjectInstance
 		              ["Member", "lastName"]]
 		
 		family_role_mm <+ [["father","Family","Member"],
-											 ["mother","Family","Member"],
+				 ["mother","Family","Member"],
 		                   ["sons","Family","Member"],
 		                   ["daugthers","Family","Member"]]
 		
