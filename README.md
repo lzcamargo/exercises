@@ -1,2 +1,2 @@
 # exercises
-This exercises of model transformation using Bloom 
+Model transformation exercises using Bloom.  
