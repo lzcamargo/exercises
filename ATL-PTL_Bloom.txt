@@ -1,0 +1,170 @@
+Families2Persons transformation, a basic example specified in atl, ptl, and bloom 
+
+==============IN ATL===========================================
+
+-- @path Families=/Families2Persons/Families.ecore
+-- @path Persons=/Families2Persons/Persons.ecore
+
+module Families2Persons;
+create OUT: Persons from IN: Families;
+
+helper context Families!Member def: isFemale(): Boolean =
+	if not self.familyMother.oclIsUndefined() then
+		true
+	else
+		if not self.familyDaughter.oclIsUndefined() then
+			true
+		else
+			false
+		endif
+	endif;
+
+helper context Families!Member def: familyName: String =
+	if not self.familyFather.oclIsUndefined() then
+		self.familyFather.lastName
+	else
+		if not self.familyMother.oclIsUndefined() then
+			self.familyMother.lastName
+		else
+			if not self.familySon.oclIsUndefined() then
+				self.familySon.lastName
+			else
+				self.familyDaughter.lastName
+			endif
+		endif
+	endif;
+
+rule Member2Male {
+	from
+		s: Families!Member (not s.isFemale())
+	to
+		t: Persons!Male (
+			fullName <- s.firstName + ' ' + s.familyName
+		)
+}
+
+rule Member2Female {
+	from
+		s: Families!Member (s.isFemale())
+	to
+		t: Persons!Female (
+			fullName <- s.firstName + ' ' + s.familyName
+		)
+}
+
+==============IN PTL===========================================
+
+metamodel(families,[
+	class(’Family’,[lastName]),
+	class(’Member’,[firstName]),
+	role(father,’Family’,’Member’,"0","1",container),
+	role(mother,’Family’,’Member’,"0","1",container),
+	role(sons,’Family’,’Member’,"0","*",container),
+	role(daughters,’Family’,’Member’,"0","*",container)]).
+
+metamodel(persons,[
+	class(’Male’,[fullName]),
+	class(’Female’,[fullName])]).
+
+helper(isMale).
+
+isMale(X,true):- ’Family_father’(families,_,X);’Family_sons’(families,_,X).
+
+helper(isFemale).
+
+isFemale(X,true):-
+	’Family_mother’(families,_,X);’Family_daughters’(families,_,X).
+
+helper(familyName).
+
+familyName(X,Z):-
+	(’Family_father’(families,Y,X),’Family_lastName’(families,Y,Z));
+	(’Family_sons’(families,Y,X),’Family_lastName’(families,Y,Z));
+	(’Family_mother’(families,Y,X),’Family_lastName’(families,Y,Z));
+	(’Family_daughters’(families,Y,X),’Family_lastName’(families,Y,Z)).
+
+rule member2Male
+	from
+		s : families!’Member’ where (isMale(s) == true)
+	to
+		t : persons!’Male’(
+			fullName <- concat(concat(s@firstName," "),familyName(s))).
+
+rule member2Female
+	from
+		s : families!’Member’ where (isFemale(s) == true)
+	to
+		t : persons!’Female’(
+			fullName <- concat(concat(s@firstName," "),familyName(s))).
+
+====================IN BLOOM WITHOUT METAMODELS============================================
+
+module ExtractProtocol
+	state do 
+		table :input_model_element,[:input_element_name, :input_element_ref, :input_element_type]
+		table :input_model_element_prop,[:input_elem_prop_name, :input_elem_prop_ref, :input_elem_prop_type]
+		
+		table :tgt_model_element, [:tgt_element_name, :tgt_element_ref, :tgt_element_type]
+		table :tgt_model_element_prop, [:tgt_element_name_prp, :tgt_element_ref_prp, :tgt_element_type_prp] 
+	end	
+	
+module Families2PersonsTransf
+  include ExtractProtocol 
+	bloom :Families2Persons do 
+		temp :family_names <= input_model_element_prop {|p| p if (p.input_elem_prop_type == "lastName")}
+		tgt_model_element_prop <= (family_names * input_model_element * input_model_element_prop).pairs(:input_elem_prop_ref => 
+			:input_element_ref, :input_element_name => :input_elem_prop_ref) do |f, i, p|
+				if (i.input_element_type == "father" or i.input_element_type == "sons")
+					["Male", "fullName", [p.input_elem_prop_name, f.input_elem_prop_name].join(" ")]
+				else
+					["Female", "fullName", [p.input_elem_prop_name, f.input_elem_prop_name].join(" ")]
+				end
+		  end
+  	end
+ end 	
+  	
+====================IN BLOOM WITH METAMODELS AND EXTRACTOR============================================	
+module Family2Person
+  include ExtractProtocol
+	state do 
+		scratch :family_name, [:fn_name, :fn_ref, :fn_type]
+		scratch :family_member, [:fm_name, :fm_ref, :fm_type]
+		scratch :person_gender, [:pg_name, :pg_ref, :pg_type]
+		scratch :family_role, [:fr_name, :fr_ref, :fr_type]
+	end
+	
+	bloom :f2p_helpers do
+		#extratc the elements of the target (tgt) metamodel from Person Class
+		person_gender <= (meta_tgt_elm * meta_tgt_elm).pairs(:tgt_elm_type => :tgt_elm_type) {|t1, t2| 
+			t2 if t1.tgt_elm_name == "Person"} 
+ 
+		#extract the names and members from families using the source (src) metamodel and the input model
+		family_name <= (meta_src_elm * input_model).pairs(:src_elm_name => :in_elm_type) {|m, i| i} 
+		family_member <= (family_name * input_model_prop).pairs(:fn_ref => :in_elm_pref) {|f, p| 
+		  [f.fn_name, p.in_elm_pname, f.fn_type]}
+  
+	  #extract the roles with the respective gender involving the source metamodel  
+		family_role <= person_gender {|p| p if p.pg_name == "fullName"}
+	  family_role <= (family_role * person_gender * meta_src_elm).pairs(:fr_type => :pg_type, :pg_type => :src_elm_type) do 
+		  |f, p, s| 		 
+		  if (p.pg_name == "Male" and (s.src_elm_name == "father" or s.src_elm_name == "sons"))
+			  [p.pg_name, f.fr_name, s.src_elm_name]
+		  elsif (p.pg_name == "Female" and (s.src_elm_name == "mother" or s.src_elm_name == "daughters"))
+				[p.pg_name, f.fr_name, s.src_elm_name]
+	    end
+	  end
+  end
+
+	bloom :Family2Person do #rule Family2Person
+	  output_model <= (family_role * family_member * input_model_prop).pairs(:fr_type => :fm_type, 
+		  :fm_name => :in_elm_pref) do |f, n, p| 
+			if f.fr_name == "Male"
+			  [f.fr_name, f.fr_ref, [n.fm_ref, p.in_elm_pname].join(" ")]
+			else
+			  [f.fr_name, f.fr_ref, [n.fm_ref, p.in_elm_pname].join(" ")]
+			end
+	  end
+	end
+
+end		
+
