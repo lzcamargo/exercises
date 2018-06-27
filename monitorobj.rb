@@ -59,7 +59,7 @@ module ObjectInstance
 		family1 = Family.new()
 		family1.lastName = "March"
 		family1.members = [["father","Jim"],["mother","Cindy"],
-											["sons","Brandon"],["daughters","Brenda"]]
+		                	["sons","Brandon"],["daughters","Brenda"]]
 	
 		family2 = Family.new()
 		family2.lastName = "Sailor"
